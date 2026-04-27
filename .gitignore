@@ -55,3 +55,8 @@
 .cproject
 .project
 .settings/
+
+__pycache__/
+ld-wrapper
+a.out
+.una_config
