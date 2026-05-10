@@ -4,7 +4,23 @@ import multiprocessing
 import shutil
 from pathlib import Path
 from mods import colors
-from mods.build import get_build_env
+from mods.build import get_build_env, SubprocessRunner
+
+
+# Module-level runner, initialized when needed
+_runner = None
+
+def _get_runner(trace_file=None):
+    """Get or create the subprocess runner."""
+    global _runner
+    if _runner is None:
+        _runner = SubprocessRunner(trace_file)
+    return _runner
+
+def set_trace_file(trace_file):
+    """Set the trace file for subprocess logging."""
+    global _runner
+    _runner = SubprocessRunner(trace_file)
 
 def target_configure(staging_dir: Path, target_dir: Path, arch="x32"):
     colors.info(f"NSD: target_configure ({arch})")
@@ -13,12 +29,12 @@ def target_configure(staging_dir: Path, target_dir: Path, arch="x32"):
     # Initialize submodules if necessary (simdzone is required)
     if not (repo_root / "simdzone" / "include" / "zone.h").exists():
         colors.info("NSD: initializing submodules...")
-        subprocess.run(["git", "submodule", "update", "--init", "--recursive"], cwd=repo_root, check=True)
+        _get_runner().run(["git", "submodule", "update", "--init", "--recursive"], cwd=repo_root, check=True)
 
     # Generate configure script if it doesn't exist
     if not (repo_root / "configure").exists():
         colors.info("NSD: running autoreconf...")
-        subprocess.run(["autoreconf", "-fi"], cwd=repo_root, env=get_build_env(), check=True)
+        _get_runner().run(["autoreconf", "-fi"], cwd=repo_root, env=get_build_env(), check=True)
 
     std_flags = os.environ.get("CFLAGS", "")
     static_flags = os.environ.get("CFLAGS_STATIC", std_flags)
@@ -46,13 +62,13 @@ def target_configure(staging_dir: Path, target_dir: Path, arch="x32"):
         f"LDFLAGS={static_flags}",
     ]
     
-    subprocess.run(cmd, cwd=repo_root, env=get_build_env(), check=True)
+    _get_runner().run(cmd, cwd=repo_root, env=get_build_env(), check=True)
 
 def target_build(staging_dir: Path, target_dir: Path, arch="x32"):
     colors.info(f"NSD: target_build")
     repo_root = Path(__file__).parent
     make_jobs = multiprocessing.cpu_count()
-    subprocess.run(["make", f"-j{make_jobs}"], cwd=repo_root, env=get_build_env(), check=True)
+    _get_runner().run(["make", f"-j{make_jobs}"], cwd=repo_root, env=get_build_env(), check=True)
 
 def target_install(staging_dir: Path, target_dir: Path, arch="x32"):
     colors.info(f"NSD: target_install")
@@ -60,11 +76,11 @@ def target_install(staging_dir: Path, target_dir: Path, arch="x32"):
     
     # Install to staging
     colors.info(f"NSD: installing to staging {staging_dir}")
-    subprocess.run(["make", f"DESTDIR={staging_dir}", "install"], cwd=repo_root, env=get_build_env(), check=True)
+    _get_runner().run(["make", f"DESTDIR={staging_dir}", "install"], cwd=repo_root, env=get_build_env(), check=True)
     
     # Install to target
     colors.info(f"NSD: installing to target {target_dir}")
-    subprocess.run(["make", f"DESTDIR={target_dir}", "install"], cwd=repo_root, env=get_build_env(), check=True)
+    _get_runner().run(["make", f"DESTDIR={target_dir}", "install"], cwd=repo_root, env=get_build_env(), check=True)
     
     # Prune target image
     colors.info(f"NSD: pruning development files and documentation from target...")
